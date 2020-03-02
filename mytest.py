@@ -23,6 +23,7 @@ def hub_tests():
     s.expect(PacketOutputEvent("eth2", reqpkt, display=Ethernet),
              "Ethernet frame destined for 70:00:00:00:00:01 should be flooded out eth2")
 
+    return s
 
 
 
