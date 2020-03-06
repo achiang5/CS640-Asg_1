@@ -43,7 +43,7 @@ def mk_stp_pkt(root_id, hops, switch_id, hwsrc="20:00:00:00:00:01", hwdst="ff:ff
     # print(p)
     return p
 
-def regularPacketWork(packet, lru_list):
+def regularPacketWork(packet, lru_list, input_port):
     curr_src_object = packetExists(packet[0].src, lru_list)
     if curr_src_object is not None:
         if curr_src_object[1] != input_port:
@@ -82,15 +82,15 @@ def main(net):
     while True:
         try:
             if root_id == switch_id:
-                    stp_packet = mk_stp_pkt(root_id, 0, switch_id)
-                    time.sleep(2)
-                    floodSTP(net, my_interfaces, stp_packet)
-                    last_stp_time = time.time
+                stp_packet = mk_stp_pkt(root_id, 0, switch_id)
+                time.sleep(2)
+                floodSTP(net, my_interfaces, stp_packet)
+                last_stp_time = time.time
             
             timestamp,input_port,packet = net.recv_packet()
             incoming_interface = input_port
-            print(incoming_interface)
-            print(root_interface)
+            # print(incoming_interface)
+            # print(root_interface)
             # print(packet)
             if packet[0].ethertype == EtherType.SLOW:
                 # do new stuff #piazza pseudocode
@@ -101,6 +101,7 @@ def main(net):
                     last_stp_time = time.time()
                     stp_packet = mk_stp_pkt(root_id, hops_to_root, switch_id)
                     floodSTP(net, my_interfaces, stp_packet, input_port)
+                    continue
                 elif packet[1].switch_id < root_id:
                     # print("Smaller root!")
                     # print(switch_id)
@@ -114,29 +115,38 @@ def main(net):
                     stp_packet = mk_stp_pkt(root_id, hops_to_root, switch_id)
                     # print(stp_packet)
                     floodSTP(net, my_interfaces, stp_packet, input_port)
+                    continue
                 elif packet[1].switch_id > root_id:
-                    if packet[1].root in blockedPorts:
+                    print(packet[1])
+                    print(blockedPorts)
+                    if incoming_interface in blockedPorts:
                         blockedPorts.remove(packet[1].root)
+                    continue
                 else:
-                    # print(root_id)
-                    # print(packet[1].switch_id)
+                    # print("Self: " + str(hops_to_root))
+                    # print("STP: " + str(packet[1].hops_to_root))
                     if packet[1].hops_to_root + 1 > hops_to_root:
                         #packet dropped
                         log_debug("Packet Dropped!")
+                        continue
                     elif(packet[1].hops_to_root + 1 < hops_to_root or (packet[1].hops_to_root+1==hops_to_root and root_switch_id>packet[1].switch_id)):
-                        print("Condition less than!")
+                        # print("Condition less than!")
+                        # print(blockedPorts)
                         if incoming_interface in blockedPorts:
                             blockedPorts.remove(incoming_interface)
                         blockedPorts.append(root_interface)
+                        # print(blockedPorts)
                         hops_to_root = packet[1].hops_to_root + 1
                         root_switch_id = packet[1].switch_id
                         root_interface = incoming_interface
                         last_stp_time = time.time()
+                        stp_packet = mk_stp_pkt(root_id, hops_to_root, switch_id)
                         floodSTP(net, my_interfaces, stp_packet, input_port)
+                        continue
                     else:
                         blockedPorts.append(incoming_interface)
             else: # regular packets
-                curr_dest_object = regularPacketWork(packet, lru_list)
+                curr_dest_object = regularPacketWork(packet, lru_list, input_port)
                 log_debug ("In {} received packet {} on {}".format(net.name, packet, input_port))
         
                 if packet[0].dst in mymacs:
@@ -147,7 +157,7 @@ def main(net):
                     net.send_packet(lru_list[index][list(curr_dest_object.keys())[0]], packet)
                 else:
                     for intf in my_interfaces:
-                        if input_port != intf.name:
+                        if input_port != intf.name and intf.name not in blockedPorts:
                             log_debug ("Flooding packet {} to {}".format(packet, intf.name))
                             net.send_packet(intf.name, packet)
         except NoPackets:
