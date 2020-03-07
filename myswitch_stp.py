@@ -85,13 +85,15 @@ def main(net):
                 stp_packet = mk_stp_pkt(root_id, 0, switch_id)
                 time.sleep(2)
                 floodSTP(net, my_interfaces, stp_packet)
-                last_stp_time = time.time
+                last_stp_time = time.time()
+
+            if time.time() - last_stp_time > 10:
+                root_id = switch_id
+                hops_to_root = 0
+                blockedPorts.clear()
             
             timestamp,input_port,packet = net.recv_packet()
             incoming_interface = input_port
-            # print(incoming_interface)
-            # print(root_interface)
-            # print(packet)
             if packet[0].ethertype == EtherType.SLOW:
                 # do new stuff #piazza pseudocode
                 if incoming_interface == root_interface:
@@ -103,9 +105,6 @@ def main(net):
                     floodSTP(net, my_interfaces, stp_packet, input_port)
                     continue
                 elif packet[1].switch_id < root_id:
-                    # print("Smaller root!")
-                    # print(switch_id)
-                    # switch_id = packet[1].switch_id
                     root_id = packet[1].switch_id
                     root_interface = incoming_interface
                     hops_to_root = packet[1].hops_to_root + 1
@@ -113,7 +112,6 @@ def main(net):
                     # reset all ports to unblocked state
                     blockedPorts.clear()
                     stp_packet = mk_stp_pkt(root_id, hops_to_root, switch_id)
-                    # print(stp_packet)
                     floodSTP(net, my_interfaces, stp_packet, input_port)
                     continue
                 elif packet[1].switch_id > root_id:
@@ -123,19 +121,14 @@ def main(net):
                         blockedPorts.remove(packet[1].root)
                     continue
                 else:
-                    # print("Self: " + str(hops_to_root))
-                    # print("STP: " + str(packet[1].hops_to_root))
                     if packet[1].hops_to_root + 1 > hops_to_root:
                         #packet dropped
                         log_debug("Packet Dropped!")
                         continue
                     elif(packet[1].hops_to_root + 1 < hops_to_root or (packet[1].hops_to_root+1==hops_to_root and root_switch_id>packet[1].switch_id)):
-                        # print("Condition less than!")
-                        # print(blockedPorts)
                         if incoming_interface in blockedPorts:
                             blockedPorts.remove(incoming_interface)
                         blockedPorts.append(root_interface)
-                        # print(blockedPorts)
                         hops_to_root = packet[1].hops_to_root + 1
                         root_switch_id = packet[1].switch_id
                         root_interface = incoming_interface
